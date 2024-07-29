@@ -1,0 +1,49 @@
+#include <Wire.h>
+
+#include <ESP32Servo.h>
+
+#include <MPU6050.h>
+
+MPU6050 mpu;
+ 
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+ 
+Servo meuServoY;
+Servo meuServoX;
+ 
+int valorY;
+int prevvalorY = 0;
+ 
+int valorX;
+int prevvalorX = 0;
+ 
+void setup() 
+{
+  Wire.begin();
+  Serial.begin(115200);
+  Serial.println("Initializando MPU");
+  mpu.initialize();
+  Serial.print(mpu.testConnection() ? "Conectado" : "Conexão Falhou");
+  meuServoY.attach(15);
+  meuServoX.attach(4);
+}
+void loop() 
+{
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  valorY = map(ay, -17000, 17000, 179, 0);
+  valorX = map(ax, -17000, 17000, 0, 179);
+    
+  meuServoY.write(valorY);
+  prevvalorY = valorY;
+  Serial.print("prevy:  ");
+  Serial.print(prevvalorY);
+  Serial.print("\n");
+   
+  meuServoX.write(valorX);
+  prevvalorX = valorX;
+  Serial.println("prevx:  ");
+  Serial.print(prevvalorX);
+  Serial.print("\n");
+
+}
