@@ -1,20 +1,14 @@
-sensors_event_t a, g, temp;
-mpu.getEvent(&a, &g, &temp);
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+#include <Wire.h>
+#include <ESP32Servo.h>
 
+// Inicialização do sensor MPU6050
+Adafruit_MPU6050 mpu;
 
-float kalmanAngleX = kalmanFilter(g.gyro.x, a.acceleration.x, dt);
-float kalmanAngleY = kalmanFilter(g.gyro.y, a.acceleration.y, dt);
-
-
-float errorX = setpointX - kalmanAngleX;
-float errorY = setpointY - kalmanAngleY;
-
-float outputX = pidControl(errorX, dt);
-float outputY = pidControl(errorY, dt);
-
-motorX.write(outputX);
-motorY.write(outputY);
-
+// Inicialização dos servos
+Servo motorX;
+Servo motorY;
 
 // Variáveis do filtro de Kalman
 float Q_angle = 0.001;
@@ -83,6 +77,10 @@ void setup() {
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
     mpu.setGyroRange(MPU6050_RANGE_500_DEG);
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+
+    // Inicializar os servos
+    motorX.attach(18); // Conectar ao pino 18
+    motorY.attach(19); // Conectar ao pino 19
     
     lastTime = millis();
 }
@@ -116,5 +114,3 @@ void loop() {
     // Espera para a próxima leitura
     delay(10);
 }
-
-
