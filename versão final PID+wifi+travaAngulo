@@ -57,6 +57,15 @@ void setup() {
   kalmanPitch.setAngle(0);
   kalmanRoll.setAngle(0);
 
+  // Adjust Kalman filter parameters to prioritize accelerometer data
+  kalmanPitch.setQangle(0.001);  // Process noise covariance for accelerometer
+  kalmanPitch.setQbias(0.003);   // Process noise covariance for gyroscope bias
+  kalmanPitch.setRmeasure(0.02); // Measurement noise covariance, increase to rely more on accelerometer
+
+  kalmanRoll.setQangle(0.001);
+  kalmanRoll.setQbias(0.003);
+  kalmanRoll.setRmeasure(0.02);
+
   motorPitch.attach(15);
   motorRoll.attach(4);
 
@@ -116,9 +125,6 @@ void loop() {
   rollOutput = Kp * rollError + Ki * rollIntegral + Kd * rollDerivative;
   rollPreviousError = rollError;
 
-  
-
-
   // Atualização dos servos com a função constrain()
   float pitchServoAngle = constrain(-pitchOutput + pitchPosInicial, 0, 180);
   float rollServoAngle = constrain(-rollOutput + rollPosInicial, 0, 180);
@@ -137,13 +143,8 @@ void loop() {
   if (debug) {
     Serial.print("  pitch:  ");
     Serial.print(pitch);
-    //Serial.print("  pitchOutput: ");
-    //Serial.print(pitchOutput);
-
     Serial.print("  roll:  ");
     Serial.println(roll);
-    //Serial.print("  rollOutput:  ");
-    //Serial.println(rollOutput);
   }
 
   if (printServos) {
