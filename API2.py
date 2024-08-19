@@ -7,6 +7,7 @@ import pandas as pd
 from datetime import datetime
 import signal
 import sys
+import os
 
 app = Flask(__name__)
 CORS(app)  # Habilita CORS para todas as rotas
@@ -21,7 +22,7 @@ def get_data():
     
     try:
         # Faz uma requisição GET ao ESP32 para obter os dados, substitua pelo IP do ESP32
-        response = requests.get('http://192.168.0.185/data', timeout=5)
+        response = requests.get('http://192.168.12.96/data', timeout=5)
 
         # Converte a resposta da requisição (que deve ser um JSON) em um objeto Python
         data = response.json()
@@ -52,9 +53,26 @@ def get_data():
 def salvar_df_excel(sig, frame):
     """Função para salvar o DataFrame em um arquivo Excel ao encerrar o programa"""
     global df
-    df.to_excel("dados_pitch_roll.xlsx", index=False)
-    print("DataFrame salvo no arquivo 'dados_pitch_roll.xlsx'.")
+    dia = datetime.date() 
+    df.to_excel(f"dados_pitch_roll_{dia}.xlsx", index=False)
+    print(f"DataFrame salvo no arquivo 'dados_pitch_roll_{dia}.xlsx'.")
+    plotar_grafico()
     sys.exit(0)  # Encerra o programa
+
+def plotar_grafico():
+    """Função para plotar um gráfico com os dados do DataFrame"""
+    global df
+    dia = datetime.date()
+    df.plot(x='tempo', y=['pitch', 'roll'], title=f'Pitch e Roll em função do tempo no dia {dia}')
+    import matplotlib.pyplot as plt
+    # Verifica se a pasta 'graficos' existe, caso contrário, cria a pasta
+    if not os.path.exists('graficos'):
+        os.makedirs('graficos')
+
+    # Salva o gráfico na pasta 'graficos'
+    plt.savefig('graficos/grafico_pitch_roll.png')
+    plt.savefig('grafico_pitch_roll.png')
+    plt.show()
 
 # Captura o sinal de interrupção (Ctrl+C) e chama a função salvar_df_excel
 signal.signal(signal.SIGINT, salvar_df_excel)
