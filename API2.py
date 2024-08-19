@@ -1,9 +1,7 @@
 from flask import Flask, jsonify
 import requests
 from flask_cors import CORS
-
 import pandas as pd
-
 from datetime import datetime
 import signal
 import sys
@@ -53,7 +51,7 @@ def get_data():
 def salvar_df_excel(sig, frame):
     """Função para salvar o DataFrame em um arquivo Excel ao encerrar o programa"""
     global df
-    dia = datetime.date() 
+    dia = datetime.now().date()
     df.to_excel(f"dados_pitch_roll_{dia}.xlsx", index=False)
     print(f"DataFrame salvo no arquivo 'dados_pitch_roll_{dia}.xlsx'.")
     plotar_grafico()
@@ -62,7 +60,20 @@ def salvar_df_excel(sig, frame):
 def plotar_grafico():
     """Função para plotar um gráfico com os dados do DataFrame"""
     global df
-    dia = datetime.date()
+    dia = datetime.now().date()
+    
+    if df.empty:
+        print("O DataFrame está vazio. Não há dados para plotar.")
+        return
+
+    if not all(col in df.columns for col in ['tempo', 'pitch', 'roll']):
+        print("O DataFrame não contém as colunas necessárias ('tempo', 'pitch', 'roll').")
+        return
+
+    if not pd.api.types.is_numeric_dtype(df['tempo']) or not pd.api.types.is_numeric_dtype(df['pitch']) or not pd.api.types.is_numeric_dtype(df['roll']):
+        print("As colunas 'tempo', 'pitch' e 'roll' devem conter dados numéricos.")
+        return
+
     df.plot(x='tempo', y=['pitch', 'roll'], title=f'Pitch e Roll em função do tempo no dia {dia}')
     import matplotlib.pyplot as plt
     # Verifica se a pasta 'graficos' existe, caso contrário, cria a pasta
