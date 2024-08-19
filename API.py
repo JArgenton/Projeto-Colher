@@ -1,10 +1,13 @@
 from flask import Flask, jsonify
 import requests
 from flask_cors import CORS
+
 import pandas as pd
+
 from datetime import datetime
 import signal
 import sys
+import os
 
 app = Flask(__name__)
 CORS(app)  # Habilita CORS para todas as rotas
@@ -19,7 +22,7 @@ def get_data():
     
     try:
         # Faz uma requisição GET ao ESP32 para obter os dados, substitua pelo IP do ESP32
-        response = requests.get('http://192.168.193.96/data', timeout=5)
+        response = requests.get('http://192.168.0.185/data', timeout=5)
 
         # Converte a resposta da requisição (que deve ser um JSON) em um objeto Python
         data = response.json()
@@ -29,9 +32,12 @@ def get_data():
         roll = data.get('roll', 0)
         yaw = data.get('yaw', 0)
 
-        # Adiciona os novos dados ao DataFrame global
-        novo_dado = {'tempo': datetime.now(), 'pitch': pitch, 'roll': roll}
-        df = df.append(novo_dado, ignore_index=True)
+        # Cria um novo DataFrame com os dados recebidos
+        novo_dado = pd.DataFrame([{'tempo': datetime.now(), 'pitch': pitch, 'roll': roll}])
+        
+        # Adiciona os novos dados ao DataFrame global usando pd.concat
+        global df
+        df = pd.concat([df, novo_dado], ignore_index=True)
 
         # Retorna os dados como uma resposta JSON para o cliente que fez a solicitação ao servidor Flask
         return jsonify({
@@ -49,7 +55,22 @@ def salvar_df_excel(sig, frame):
     global df
     df.to_excel("dados_pitch_roll.xlsx", index=False)
     print("DataFrame salvo no arquivo 'dados_pitch_roll.xlsx'.")
+    plotar_grafico()
     sys.exit(0)  # Encerra o programa
+
+def plotar_grafico():
+    """Função para plotar um gráfico com os dados do DataFrame"""
+    global df
+    df.plot(x='tempo', y=['pitch', 'roll'], title='Pitch e Roll em função do tempo')
+    import matplotlib.pyplot as plt
+    # Verifica se a pasta 'graficos' existe, caso contrário, cria a pasta
+    if not os.path.exists('graficos'):
+        os.makedirs('graficos')
+
+    # Salva o gráfico na pasta 'graficos'
+    plt.savefig('graficos/grafico_pitch_roll.png')
+    plt.savefig('grafico_pitch_roll.png')
+    plt.show()
 
 # Captura o sinal de interrupção (Ctrl+C) e chama a função salvar_df_excel
 signal.signal(signal.SIGINT, salvar_df_excel)
