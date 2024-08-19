@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from flask import Flask, jsonify
 import requests
 from flask_cors import CORS
@@ -70,12 +71,17 @@ def plotar_grafico():
         print("O DataFrame não contém as colunas necessárias ('tempo', 'pitch', 'roll').")
         return
 
-    if not pd.api.types.is_numeric_dtype(df['tempo']) or not pd.api.types.is_numeric_dtype(df['pitch']) or not pd.api.types.is_numeric_dtype(df['roll']):
-        print("As colunas 'tempo', 'pitch' e 'roll' devem conter dados numéricos.")
+    # Converte as colunas para os tipos apropriados
+    df['tempo'] = pd.to_datetime(df['tempo'], errors='coerce')
+    df['pitch'] = pd.to_numeric(df['pitch'], errors='coerce')
+    df['roll'] = pd.to_numeric(df['roll'], errors='coerce')
+
+    if df[['tempo', 'pitch', 'roll']].isnull().any().any():
+        print("As colunas 'tempo', 'pitch' e 'roll' devem conter dados válidos.")
         return
 
     df.plot(x='tempo', y=['pitch', 'roll'], title=f'Pitch e Roll em função do tempo no dia {dia}')
-    import matplotlib.pyplot as plt
+    
     # Verifica se a pasta 'graficos' existe, caso contrário, cria a pasta
     if not os.path.exists('graficos'):
         os.makedirs('graficos')
