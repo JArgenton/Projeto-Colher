@@ -8,36 +8,34 @@
 #include <WiFi.h>
 #include <ESP32Servo.h>
 
+//_____________________________OBJETOS DE BIBLIOTECA E ATIVAÇÃO DE DETERMINADAS VARIAVEIS NO MONITOR SERIAL_____________________________________
 Servo motorPitch;
 Servo motorRoll;
 
 bool debug = 0;
-bool printServos = 1;
+bool printServos = 0;
 
-MPU6050 mpu;         // Creates an MPU6050 object
-Kalman kalmanPitch;  // Kalman filter object for pitch
-Kalman kalmanRoll;   // Kalman filter object for roll
-
-const char* ssid = "CLARO_2G81DDF4";
-const char* password = "7281DDF4";
+MPU6050 mpu;         // Cria obj classe MPU6050
+Kalman kalmanPitch;  // Obj Kalman para pitch
+Kalman kalmanRoll;   // Obj Kalman para roll
+//________________________________________________________PREDEFINIÇÕES DE WIFI__________________________________________________________________
+const char* ssid = "Argenton";
+const char* password = "eruw7893";
 
 WebServer server(80);
-
+//___________________________________________________________SENSOR MPU 6050_____________________________________________________________________
 int16_t acelX, acelY, acelZ;
 int16_t giroX, giroY, giroZ;
-
-// PID constants
-float Kp = 2.0;
-float Ki = 0.06;
+//_________________________________________________________PID E FILTRO KALMAN___________________________________________________________________
+float Kp = 1.5;
+float Ki = 0.018;
 float Kd = 0.0;
 
 float setPointPitch = 0.0;
 float setPointRoll = 0.0;
 
-// Variables for storing pitch and roll before PID
 float pitch, roll;
 
-// PID variables
 float pitchError, pitchPreviousError;
 float pitchIntegral, pitchDerivative;
 float pitchOutput;
@@ -45,29 +43,19 @@ float pitchOutput;
 float rollError, rollPreviousError;
 float rollIntegral, rollDerivative;
 float rollOutput;
-
-float rollPosInicial = 95.0;
+//________________________________________________CONSTANTES DE VALOR INICIAL DOS MOTORES________________________________________________________
+float rollPosInicial = 100.0;
 float pitchPosInicial = 90.0;
-
+//_______________________________________________________________________________________________________________________________________________
 unsigned long timer = micros();
 
 void setup() {
-  Wire.begin();  // Initialize I2C
+  Wire.begin();  // Inicializa I2C
   Serial.begin(115200);
-  mpu.initialize();  // Initialize MPU6050
+  mpu.initialize();  // Inicializa MPU
 
-  // Initialize Kalman filter
   kalmanPitch.setAngle(0);
   kalmanRoll.setAngle(0);
-
-  // Adjust Kalman filter parameters to prioritize accelerometer data
-  kalmanPitch.setQangle(0.001); // Process noise covariance for accelerometer
-  kalmanPitch.setQbias(0.003);  // Process noise covariance for gyroscope bias
-  kalmanPitch.setRmeasure(0.02); // Measurement noise covariance, increase to rely more on accelerometer
-
-  kalmanRoll.setQangle(0.001);
-  kalmanRoll.setQbias(0.003);
-  kalmanRoll.setRmeasure(0.02);
 
   motorPitch.attach(15);
   motorRoll.attach(4);
@@ -77,7 +65,6 @@ void setup() {
 
   timer = micros();
 
-  // WiFi connection
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -86,13 +73,11 @@ void setup() {
 
   Serial.println("conectado");
 
-  // Define the "/data" route to send sensor data
   server.on("/data", HTTP_GET, []() {
     String json = "{\"pitch\":" + String(pitch) + ", \"roll\":" + String(roll) + ", \"pidPitchOutput\":" + String(pitchOutput) + ", \"pidRollOutput\":" + String(rollOutput) + "}";
-    server.send(200, "application/json", json);
+    server.send(100, "application/json", json);
   });
 
-  // Start server
   server.begin();
   Serial.println("server started");
   Serial.println("Access: http://");
@@ -100,65 +85,72 @@ void setup() {
 }
 
 void loop() {
-  // Read MPU6050 data
   mpu.getMotion6(&acelX, &acelY, &acelZ, &giroX, &giroY, &giroZ);
 
-  // Convert accelerometer data to physical units (2g range)
   float acelX_g = acelX / 16384.0;
   float acelY_g = acelY / 16384.0;
   float acelZ_g = acelZ / 16384.0;
 
-  // Convert gyroscope data to physical units (±250°/s range)
   float giroX_deg_s = giroX / 131.0;
   float giroY_deg_s = giroY / 131.0;
   float giroZ_deg_s = giroZ / 131.0;
 
-  // Calculate time difference
   float dt = (micros() - timer) / 1000000.0;
   timer = micros();
 
-  // Calculate angles based on accelerometer data
-  float pitchAcel = atan2(acelY, acelZ) * 180 / PI;
-  float rollAcel = atan2(acelX, acelZ) * 180 / PI;
+  float pitchAcel = atan2(acelY_g, acelZ_g) * 180 / PI;
+  float rollAcel = atan2(acelX_g, acelZ_g) * 180 / PI;
 
-  // Pass data through Kalman filter for more accurate angles
   pitch = kalmanPitch.getAngle(pitchAcel, giroY_deg_s, dt);
   roll = kalmanRoll.getAngle(rollAcel, giroX_deg_s, dt);
 
-  // PID control for pitch
   pitchError = setPointPitch - pitch;
   pitchIntegral += pitchError * dt;
   pitchDerivative = (pitchError - pitchPreviousError) / dt;
   pitchOutput = Kp * pitchError + Ki * pitchIntegral + Kd * pitchDerivative;
   pitchPreviousError = pitchError;
 
-  // PID control for roll
   rollError = setPointRoll - roll;
   rollIntegral += rollError * dt;
   rollDerivative = (rollError - rollPreviousError) / dt;
   rollOutput = Kp * rollError + Ki * rollIntegral + Kd * rollDerivative;
   rollPreviousError = rollError;
 
+  
+
+
+  // Atualização dos servos com a função constrain()
+  float pitchServoAngle = constrain(-pitchOutput + pitchPosInicial, 0, 180);
+  float rollServoAngle = constrain(-rollOutput + rollPosInicial, 0, 180);
+
+  if(pitch > -15)
+  {
+    motorPitch.write(pitchServoAngle);
+  } 
+  else 
+  {
+    motorPitch.write(100);
+  }
+
+  motorRoll.write(rollServoAngle);
+
   if (debug) {
     Serial.print("  pitch:  ");
     Serial.print(pitch);
-    Serial.print("  pitchOutput: ");
-    Serial.print(pitchOutput);
+    //Serial.print("  pitchOutput: ");
+    //Serial.print(pitchOutput);
 
     Serial.print("  roll:  ");
-    Serial.print(roll);
-    Serial.print("  rollOutput:  ");
-    Serial.println(rollOutput);
+    Serial.println(roll);
+    //Serial.print("  rollOutput:  ");
+    //Serial.println(rollOutput);
   }
 
-  motorPitch.write(-pitchOutput + pitchPosInicial);
-  motorRoll.write(-rollOutput + rollPosInicial);
-
-  if(printServos){
+  if (printServos) {
     Serial.print("anguloMotorPitch:  ");
-    Serial.print(-pitchOutput + pitchPosInicial);
+    Serial.print(pitchServoAngle);
     Serial.print("  anguloMotorRoll:  ");
-    Serial.println(-rollOutput + rollPosInicial);
+    Serial.println(rollServoAngle);
   }
 
   server.handleClient();
