@@ -30,62 +30,29 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // Grupo que vai conter todas as arestas do prisma
-        const prismGroup = new THREE.Group();
+        // Adjustable dimensions for the rectangular prism
+        const width = 2;
+        const height = 1;
+        const depth = 3;
 
-        const createEdge = (start, end, color) => {
-            const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
-            const material = new THREE.LineBasicMaterial({ color: color, linewidth: 5 });
-            return new THREE.Line(geometry, material);
-        };
+        // Geometry for the rectangular prism
+        const geometry = new THREE.BoxGeometry(width, height, depth);
 
-        // Cria uma geometria para o cubo
-        const vertices = [
-            new THREE.Vector3(-1, -1, 1),
-            new THREE.Vector3(1, -1, 1),
-            new THREE.Vector3(1, 1, 1),
-            new THREE.Vector3(-1, 1, 1),
-            new THREE.Vector3(-1, -1, -1),
-            new THREE.Vector3(1, -1, -1),
-            new THREE.Vector3(1, 1, -1),
-            new THREE.Vector3(-1, 1, -1),
+        // Materials for each face (6 faces with different colors)
+        const materials = [
+            new THREE.MeshBasicMaterial({ color: 0xff0000 }), // Red
+            new THREE.MeshBasicMaterial({ color: 0x00ff00 }), // Green
+            new THREE.MeshBasicMaterial({ color: 0x0000ff }), // Blue
+            new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Yellow
+            new THREE.MeshBasicMaterial({ color: 0xff00ff }), // Magenta
+            new THREE.MeshBasicMaterial({ color: 0x00ffff })  // Cyan
         ];
 
-        // Cria as arestas do cubo
-        const edges = [
-            // Front face
-            [vertices[0], vertices[1]],
-            [vertices[1], vertices[2]],
-            [vertices[2], vertices[3]],
-            [vertices[3], vertices[0]],
+        // Create the mesh for the rectangular prism with the specified materials
+        const prism = new THREE.Mesh(geometry, materials);
+        scene.add(prism);
 
-            // Back face
-            [vertices[4], vertices[5]],
-            [vertices[5], vertices[6]],
-            [vertices[6], vertices[7]],
-            [vertices[7], vertices[4]],
-
-            // Connect front and back faces
-            [vertices[0], vertices[4]],
-            [vertices[1], vertices[5]],
-            [vertices[2], vertices[6]],
-            [vertices[3], vertices[7]]
-        ];
-
-        // Define as cores para as arestas das faces superior e inferior
-        const topBottomColor = 0x00ff00; // Verde para faces superior e inferior
-        const sideColor = 0xff0000; // Vermelho para as arestas laterais
-
-        // Adiciona todas as arestas ao grupo
-        edges.forEach(edge => {
-            const [start, end] = edge;
-            const color = (start.z === 1 || end.z === 1 || start.z === -1 || end.z === -1) ? topBottomColor : sideColor;
-            const line = createEdge(start, end, color);
-            prismGroup.add(line);
-        });
-
-        scene.add(prismGroup);
-        camera.position.set(3, 3, 3);
+        camera.position.set(5, 5, 5);
         camera.lookAt(0, 0, 0);
 
         function animate() {
@@ -94,25 +61,25 @@
         }
         animate();
 
-        // Função que busca os dados de pitch, roll e yaw do servidor Flask
+        // Function to fetch pitch, roll, and yaw data from the Flask server
         function getData() {
-            fetch('http://localhost:5000/data')  // Endereço do servidor Flask
+            fetch('http://localhost:5000/data')
                 .then(response => response.json())
                 .then(data => {
-                    // Atualiza os valores de pitch, roll e yaw na página
+                    // Update pitch, roll, and yaw values on the page
                     document.getElementById("pitch").innerText = data.pitch.toFixed(2);
                     document.getElementById("roll").innerText = data.roll.toFixed(2);
                     document.getElementById("yaw").innerText = data.yaw.toFixed(2);
 
-                    // Atualiza a rotação do grupo de arestas de acordo com os valores recebidos
-                    prismGroup.rotation.x = THREE.Math.degToRad(data.pitch);
-                    prismGroup.rotation.y = THREE.Math.degToRad(data.yaw);
-                    prismGroup.rotation.z = THREE.Math.degToRad(data.roll);
+                    // Update the rotation of the prism based on the received data
+                    prism.rotation.x = THREE.Math.degToRad(data.pitch);
+                    prism.rotation.y = THREE.Math.degToRad(data.yaw);
+                    prism.rotation.z = THREE.Math.degToRad(data.roll);
                 })
                 .catch(error => {
                     console.error('Error:', error);
 
-                    // Dados simulados em caso de erro
+                    // Simulated data in case of error
                     const simulatedData = {
                         pitch: (Math.random() * 180 - 90).toFixed(2),
                         roll: (Math.random() * 180 - 90).toFixed(2),
@@ -122,14 +89,14 @@
                     document.getElementById("roll").innerText = simulatedData.roll;
                     document.getElementById("yaw").innerText = simulatedData.yaw;
 
-                    // Atualiza a rotação do grupo de arestas com dados simulados
-                    prismGroup.rotation.x = THREE.Math.degToRad(simulatedData.pitch);
-                    prismGroup.rotation.y = THREE.Math.degToRad(simulatedData.yaw);
-                    prismGroup.rotation.z = THREE.Math.degToRad(simulatedData.roll);
+                    // Update the rotation of the prism with simulated data
+                    prism.rotation.x = THREE.Math.degToRad(simulatedData.pitch);
+                    prism.rotation.y = THREE.Math.degToRad(simulatedData.yaw);
+                    prism.rotation.z = THREE.Math.degToRad(simulatedData.roll);
                 });
         }
 
-        // Chama a função getData a cada 300ms para obter os dados atualizados do servidor Flask
+        // Call getData every 300ms to get updated data from the Flask server
         setInterval(getData, 300);
     </script>
 </body>
