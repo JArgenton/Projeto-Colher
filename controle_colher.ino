@@ -1,140 +1,90 @@
 #include <Wire.h>
-
 #include <ESP32Servo.h>
 
-#include <MPU6050.h>
+const int MPU_addr = 0x68; // I2C address of the MPU-6050
 
-#include <Kalman.h>
+int16_t AcelX, AcelY, AcelZ, Tmp, GyroX, GiroY, GiroZ;
 
+float delta_t = 0.005;
 
-MPU6050 mpu;
+float pitchAcc, rollAcc, pitch, roll, pitched;
 
-Kalman kalmanPitch; //obj kalman para pitch --> BIBLIOTECA EXTERNA --> github.com/TKJEletronics/KalmanFilter --> eu escrevi o link, pode estar errado @sabado
-Kalman kalmanRoll; //obj kalman para roll
+float Acel_Gyro_prop = 0.85;
 
+// PID parameters
+float KpP = 1.0;
+float Kp = 1.15;  // 
+float Ki = 0.0;  // 
+float Kd = 0.0;  // fixed in 0
 
+float setpointPitch = 0.0;  // desired point
+float setpointRoll = 0.0;   // desired point
 
-int16_t acelX, acelY, acelZ;
-int16_t giroX, giroY, giroZ;
+float integralPitch = 0.0;
+float integralRoll = 0.0;
 
-//VALORES CONSTANTES PID, I é 0 devido a especificidade do problema
-float Kp = 0.75;
-float Ki = 0.015;
-float Kd = 0;
+float previousErrorPitch = 0.0;
+float previousErrorRoll = 0.0;
 
-float setPointPitch = 0.0; // angulo desejado para estabilizaçao
-float setPointRoll = 0.0; 
+// ============= INITIAL SETUP ===========================================
 
-float pitch, roll;
+Servo myservo1, myservo2;
 
+void setup() {
+    Wire.begin();
+    Wire.beginTransmission(MPU_addr);
 
-//PID PITCH
-float pitchError, pitchPreviousError;
-float pitchIntegral, pitchDerivative;
-float pitchOutput;
+    Wire.write(0x6B); // PWR_MGMT_1 register
+    Wire.write(0); // set to zero (MPU-6050)
+    Wire.endTransmission(true);
 
-//PID ROLL
-float rollError, rollPreviousError;
-float rollIntegral, rollDerivative;
-float rollOutput;
-
-int16_t ax, ay, az;
-int16_t gx, gy, gz;
-
-unsigned long timer = micros();
-
-Servo meuServoY;
-Servo meuServoX;
- 
-int valorY;
-int prevvalorY = 0;
- 
-int valorX;
-int prevvalorX = 0;
- 
-void setup() 
-{
-  Wire.begin();
-  Serial.begin(115200);
-  Serial.println("Initializando MPU");
-  mpu.initialize();
-  Serial.print(mpu.testConnection() ? "Conectado" : "Conexão Falhou");
-  meuServoY.attach(15);
-  meuServoX.attach(4);
-
-    //Inicializa filtro Kalman
-  kalmanPitch.setAngle(-80);
-  kalmanRoll.setAngle(30);
-
-  //inicializa tmporizador
-    timer = micros();
-    
+    Serial.begin(115200);
+    myservo1.attach(4);
+    myservo2.attach(15);
 }
-void loop() 
-{
-  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-   mpu.getMotion6(&acelX, &acelY, &acelZ, &giroX, &giroY, &giroZ);
 
-  // conversao de dados do acelerometro para unidades fisicas, utilizando faixa 2g, pode variar de sensor para sensor ***verificar***
-  float acelX_g = acelX / 16384.0; 
-  float acelY_g = acelY / 16384.0;
-  float acelZ_g = acelZ / 16384.0;  
+// ============= MAIN LOOP ===============================================
+void loop() {
+    Wire.beginTransmission(MPU_addr);
+    Wire.write(0x3B); // starting with register 0x3B (ACCEL_XOUT_H)
+    Wire.endTransmission(false);
+    Wire.requestFrom(MPU_addr, 14, true); // request a total of 14 registers
 
-  //conversao de dados do giroscopio para unidade fisica, feixa utilizada foi +-250*/S
-  float giroX_deg_s = giroX / 131.0; 
-  float giroY_deg_s = giroY / 131.0;
-  float giroZ_deg_s = giroZ / 131.0;
+    AcelX = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
+    AcelY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
+    AcelZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
+    GyroX = Wire.read() << 8 | Wire.read(); // 0x43 (GYRO_XOUT_H) & 0x44 (GYRO_XOUT_L)
+    GiroY = Wire.read() << 8 | Wire.read(); // 0x45 (GYRO_YOUT_H) & 0x46 (GYRO_YOUT_L)
+    GiroZ = Wire.read() << 8 | Wire.read(); // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
 
-  //VARIAÇAO DE TEMPO
-  float dt = (micros() - timer)/ 1000000.0;
-  timer = micros();
+    // Complementary filter
+    long squaresum_P = ((long)GiroY * GiroY + (long)AcelY * AcelY);
+    long squaresum_R = ((long)GyroX * GyroX + (long)AcelX * AcelX);
 
-  //calcula o angulo baseado nos dados fornecidos pelo ACELEROMETRO
-  float pitchAcel = atan2(acelY, acelZ) * 180 / PI; 
-  float rollAcel = atan2(acelX, acelZ) * 180 / PI;
-
-  //PASSA OS DADOS PELO FILTRO DE KALMAN, RETORNANDO ANGULOS MAIS PRECISOS
-  pitch = kalmanPitch.getAngle(pitchAcel, giroY_deg_s, dt); // O filtro de kalman usa o valor da VARIAÇAO do angulo "giroY_deg_s" e o angulo fornecido pelo calculo usando aceleraçao e retorna o valor "corrigido"
-  roll = kalmanRoll.getAngle(rollAcel, giroX/131, dt);
-
-  //CONTROLE PID PITCH --> APENAS PI
-  pitchError = setPointPitch - giroX_deg_s;
-  pitchIntegral += pitchError * dt;
-  pitchDerivative = (pitchError - pitchPreviousError) / dt;
-  pitchOutput = (Kp * pitchError + Ki * pitchIntegral + Kd * pitchDerivative);
-  
-  pitchPreviousError = pitchError;
-  
-  
-  //CONTROLE PID ROLL --> APENAS PI  
-  rollError = setPointRoll - giroY_deg_s;
-  rollIntegral += rollError * dt;
-  rollDerivative = (rollError - rollPreviousError) / dt;
-  rollOutput = ( Kp * rollError + Ki * rollIntegral + Kd * rollDerivative);
-  
-  rollPreviousError = rollError;
-
-  rollOutput *= -1;
-  pitchOutput *= -1;
-
-// Exibição dos ângulos e saídas do PID no monitor serial
-  Serial.print("Pitch: ");
-  Serial.print(pitch);
-  Serial.print(", Roll: ");
-  Serial.print(roll);
-  Serial.print(", PID Pitch Output: ");
-  Serial.print(pitchOutput);
-  Serial.print(", PID Roll Output: ");
-  Serial.println(rollOutput);
-  valorY = map(ay, -17000, 17000, 0, 179);
-  valorX = map(ax, -17000, 17000, 0, 179);
+    pitch += ((-AcelY / 40.8f) * (delta_t));
+    roll += ((-AcelX / 45.8f) * (delta_t)); // 32.8
     
-  meuServoY.write(valorY);
-  prevvalorY = valorY;
-
-   
-  meuServoX.write(valorX);
-  prevvalorX = valorX;
+    pitchAcc = atan((AcelY / sqrt(squaresum_P)) * RAD_TO_DEG);
+    rollAcc = atan((AcelX / sqrt(squaresum_R)) * RAD_TO_DEG);
+    pitch = (Acel_Gyro_prop * pitch + (1.0f - Acel_Gyro_prop) * pitchAcc);
+    roll = (Acel_Gyro_prop * roll + (1.0f - Acel_Gyro_prop) * rollAcc);
 
 
+    // PID calculations for pitch
+    float errorPitch = setpointPitch - pitch;
+    integralPitch += errorPitch * delta_t;
+    float derivativePitch = (errorPitch - previousErrorPitch) / delta_t;
+    float outputPitch = KpP * errorPitch + Ki * integralPitch + Kd * derivativePitch;
+    previousErrorPitch = errorPitch;
+
+    // PID calculations for roll
+    float errorRoll = setpointRoll - roll;
+    integralRoll += errorRoll * delta_t;
+    float derivativeRoll = (errorRoll - previousErrorRoll) / delta_t;
+    float outputRoll = Kp * errorRoll + Ki * integralRoll + Kd * derivativeRoll;
+    previousErrorRoll = errorRoll;
+
+    // Servo commands
+    myservo1.write(outputRoll + 90);
+    myservo2.write(outputPitch + 90);
 }
