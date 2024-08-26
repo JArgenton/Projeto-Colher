@@ -1,25 +1,32 @@
-#include <Kalman.h>
-#include "Wire.h"
-#include "MPU6050.h"
+#include <Wire.h>
 
-MPU6050 mpu; //cria obj classe MPU6050
+#include <ESP32Servo.h>
+
+#include <MPU6050.h>
+
+#include <Kalman.h>
+
+
+MPU6050 mpu;
+
 Kalman kalmanPitch; //obj kalman para pitch --> BIBLIOTECA EXTERNA --> github.com/TKJEletronics/KalmanFilter --> eu escrevi o link, pode estar errado @sabado
-Kalman kalmanRoll; //obj kalman para roll 
+Kalman kalmanRoll; //obj kalman para roll
+
+
 
 int16_t acelX, acelY, acelZ;
-int16_t giroX, giroY, giroZ; //int com apenas 16 bites, é utilizado pelo MPU. usa menos memoria e possui relativa precisao para seu uso pois o sensor nao abrange uma faixa ampla de dados
+int16_t giroX, giroY, giroZ;
 
 //VALORES CONSTANTES PID, I é 0 devido a especificidade do problema
-float Kp = 1.0;
-float Ki = 0.01;
+float Kp = 0.75;
+float Ki = 0.015;
 float Kd = 0;
 
 float setPointPitch = 0.0; // angulo desejado para estabilizaçao
 float setPointRoll = 0.0; 
-//VARIAVEIS PARA GUARDAR VALORES PITCH E ROLL ANTES DO PID
+
 float pitch, roll;
 
-//INICIALIZAÇAO VARIAVEIS PID
 
 //PID PITCH
 float pitchError, pitchPreviousError;
@@ -31,26 +38,42 @@ float rollError, rollPreviousError;
 float rollIntegral, rollDerivative;
 float rollOutput;
 
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
 unsigned long timer = micros();
 
-void setup() {
-  
-  Wire.begin(); //inicializa I2c
+Servo meuServoY;
+Servo meuServoX;
+ 
+int valorY;
+int prevvalorY = 0;
+ 
+int valorX;
+int prevvalorX = 0;
+ 
+void setup() 
+{
+  Wire.begin();
   Serial.begin(115200);
-  mpu.initialize(); //inicializa MPU --> bibilioteca lá
+  Serial.println("Initializando MPU");
+  mpu.initialize();
+  Serial.print(mpu.testConnection() ? "Conectado" : "Conexão Falhou");
+  meuServoY.attach(15);
+  meuServoX.attach(4);
 
-  //Inicializa filtro Kalman
-  kalmanPitch.setAngle(0);
-  kalmanRoll.setAngle(0);
+    //Inicializa filtro Kalman
+  kalmanPitch.setAngle(-80);
+  kalmanRoll.setAngle(30);
 
   //inicializa tmporizador
-  timer = micros();
+    timer = micros();
+    
 }
-
-
-void loop() {
-  //leitura MPU
-  mpu.getMotion6(&acelX, &acelY, &acelZ, &giroX, &giroY, &giroZ);
+void loop() 
+{
+  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+   mpu.getMotion6(&acelX, &acelY, &acelZ, &giroX, &giroY, &giroZ);
 
   // conversao de dados do acelerometro para unidades fisicas, utilizando faixa 2g, pode variar de sensor para sensor ***verificar***
   float acelX_g = acelX / 16384.0; 
@@ -75,21 +98,24 @@ void loop() {
   roll = kalmanRoll.getAngle(rollAcel, giroX/131, dt);
 
   //CONTROLE PID PITCH --> APENAS PI
-  pitchError = setPointPitch - pitch;
+  pitchError = setPointPitch - giroX_deg_s;
   pitchIntegral += pitchError * dt;
   pitchDerivative = (pitchError - pitchPreviousError) / dt;
-  pitchOutput = Kp * pitchError + Ki * pitchIntegral + Kd * pitchDerivative;
+  pitchOutput = (Kp * pitchError + Ki * pitchIntegral + Kd * pitchDerivative);
   
   pitchPreviousError = pitchError;
   
   
   //CONTROLE PID ROLL --> APENAS PI  
-  rollError = setPointRoll - pitch;
+  rollError = setPointRoll - giroY_deg_s;
   rollIntegral += rollError * dt;
   rollDerivative = (rollError - rollPreviousError) / dt;
-  pitchOutput = Kp * rollError + Ki * rollIntegral + Kd * rollDerivative;
+  rollOutput = ( Kp * rollError + Ki * rollIntegral + Kd * rollDerivative);
   
   rollPreviousError = rollError;
+
+  rollOutput *= -1;
+  pitchOutput *= -1;
 
 // Exibição dos ângulos e saídas do PID no monitor serial
   Serial.print("Pitch: ");
@@ -100,10 +126,15 @@ void loop() {
   Serial.print(pitchOutput);
   Serial.print(", PID Roll Output: ");
   Serial.println(rollOutput);
+  valorY = map(ay, -17000, 17000, 0, 179);
+  valorX = map(ax, -17000, 17000, 0, 179);
+    
+  meuServoY.write(valorY);
+  prevvalorY = valorY;
 
-  // DELAY
-  delay(100);
+   
+  meuServoX.write(valorX);
+  prevvalorX = valorX;
 
 
-  
 }
