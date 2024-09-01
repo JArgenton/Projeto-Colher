@@ -1,0 +1,123 @@
+#include <Wire.h>
+#include <ESP32Servo.h>
+
+#include <HTTP_Method.h>
+#include <Uri.h>
+#include <WebServer.h>
+#include <WiFi.h>
+
+const char* ssid = "HUAWEI-5G-Zs26";
+const char* password = "HcrcvARh";
+
+WebServer server(80);
+
+const int MPUd_addr = 0x68; // I2C address of the MPU-6050
+
+int16_t AcelX, AcelY, AcelZ, Tmp, GyroX, GiroY, GiroZ;
+
+float delta_t = 0.005;
+
+float pitchAcc, rollAcc, pitch, roll, pitched;
+
+float Acel_Gyro_prop = 0.85;
+
+// PID parameters
+float KpP = 1.0;
+float Kp = 1.15;  // 
+float Ki = 0.0;  // 
+float Kd = 0.0;  // fixed in 0
+
+float setpointPitch = 0.0;  // desired point
+float setpointRoll = 0.0;   // desired point
+
+float integralPitch = 0.0;
+float integralRoll = 0.0;
+
+float previousErrorPitch = 0.0;
+float previousErrorRoll = 0.0;
+
+// ============= INITIAL SETUP ===========================================
+
+Servo myservo1, myservo2;
+
+void setup() {
+    Wire.begin();
+    Wire.beginTransmission(MPU_addr);
+
+    Wire.write(0x6B); // PWR_MGMT_1 register
+    Wire.write(0); // set to zero (MPU-6050)
+    Wire.endTransmission(true);
+
+    Serial.begin(115200);
+    myservo1.attach(4);
+    myservo2.attach(15);
+
+    WiFi.begin(ssid, password);
+  while(WiFi.status() != WL_CONNECTED){
+
+    delay(1000);
+    Serial.println("connecting to WIFI ...");
+  }
+  
+  Serial.println("conectado");
+
+// Define the "/data" route to send sensor data
+  server.on("/data", HTTP_GET, []() {
+    String json = "{\"pitch\":" + String(pitch) + ", \"roll\":" + String(roll) +
+                  ", \"pidPitchOutput\":" + String(outputPitch) + 
+                  ", \"pidRollOutput\":" + String(outputRoll) + "}"; server.send(200,"application/json",json);});
+
+   //START SERVER
+   server.begin();
+   Serial.println("server started");
+   Serial.println("Access: hhtp://");
+   Serial.println(WiFi.localIP());
+}
+
+// ============= MAIN LOOP ===============================================
+void loop() {
+    Wire.beginTransmission(MPU_addr);
+    Wire.write(0x3B); // starting with register 0x3B (ACCEL_XOUT_H)
+    Wire.endTransmission(false);
+    Wire.requestFrom(MPU_addr, 14, true); // request a total of 14 registers
+
+    AcelX = Wire.read() << 8 | Wire.read(); // 0x3B (ACCEL_XOUT_H) & 0x3C (ACCEL_XOUT_L)
+    AcelY = Wire.read() << 8 | Wire.read(); // 0x3D (ACCEL_YOUT_H) & 0x3E (ACCEL_YOUT_L)
+    AcelZ = Wire.read() << 8 | Wire.read(); // 0x3F (ACCEL_ZOUT_H) & 0x40 (ACCEL_ZOUT_L)
+    GyroX = Wire.read() << 8 | Wire.read(); // 0x43 (GYRO_XOUT_H) & 0x44 (GYRO_XOUT_L)
+    GiroY = Wire.read() << 8 | Wire.read(); // 0x45 (GYRO_YOUT_H) & 0x46 (GYRO_YOUT_L)
+    GiroZ = Wire.read() << 8 | Wire.read(); // 0x47 (GYRO_ZOUT_H) & 0x48 (GYRO_ZOUT_L)
+
+    // Complementary filter
+    long squaresum_P = ((long)GiroY * GiroY + (long)AcelY * AcelY);
+    long squaresum_R = ((long)GyroX * GyroX + (long)AcelX * AcelX);
+
+    pitch += ((-AcelY / 40.8f) * (delta_t));
+    roll += ((-AcelX / 45.8f) * (delta_t)); // 32.8
+    
+    pitchAcc = atan((AcelY / sqrt(squaresum_P)) * RAD_TO_DEG);
+    rollAcc = atan((AcelX / sqrt(squaresum_R)) * RAD_TO_DEG);
+    pitch = (Acel_Gyro_prop * pitch + (1.0f - Acel_Gyro_prop) * pitchAcc);
+    roll = (Acel_Gyro_prop * roll + (1.0f - Acel_Gyro_prop) * rollAcc);
+
+
+    // PID calculations for pitch
+    float errorPitch = setpointPitch - pitch;
+    integralPitch += errorPitch * delta_t;
+    float derivativePitch = (errorPitch - previousErrorPitch) / delta_t;
+    float outputPitch = KpP * errorPitch + Ki * integralPitch + Kd * derivativePitch;
+    previousErrorPitch = errorPitch;
+
+    // PID calculations for roll
+    float errorRoll = setpointRoll - roll;
+    integralRoll += errorRoll * delta_t;
+    float derivativeRoll = (errorRoll - previousErrorRoll) / delta_t;
+    float outputRoll = Kp * errorRoll + Ki * integralRoll + Kd * derivativeRoll;
+    previousErrorRoll = errorRoll;
+
+    // Servo commands
+    myservo1.write(outputRoll + 90);
+    myservo2.write(outputPitch + 90);
+
+     server.handleClient();
+}
