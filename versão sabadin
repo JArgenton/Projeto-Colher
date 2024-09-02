@@ -119,8 +119,17 @@ void loop() {
     previousErrorRoll = errorRoll;
 
     // Servo commands
-    myservo1.write(outputRoll + 90);
-    myservo2.write(outputPitch + 90);
+    myservo1.write(outputRoll + 100);
+    
+    if (outputPitch <= -20) {
+        myservo2.write(70);  // Pode ajustar o valor para a posição desejada em -20
+    } else if (outputPitch >= 0) {
+        myservo2.write(outputPitch + 90);
+    } else {
+        // Interpolação linear entre -20 e 0
+        int servoPosition = map(outputPitch, -20, 0, 70, 90);  // Ajusta os valores conforme necessário
+        myservo2.write(servoPosition);
+    }
 
      server.handleClient();
 }
